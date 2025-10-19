@@ -1,0 +1,28 @@
+# 1. 克隆
+git clone https://github.com/cherloner/my-project.git
+cd my-project
+
+# 2. 配置个人标识（若全局已配可跳过，用户名与邮箱使用你自己的）
+git config user.name "Alice"
+git config user.email "alice@example.com"
+
+
+-----------------------------------------------------------
+
+
+# 1. 每天开始先同步最新代码
+git switch main
+git pull origin main
+
+# 2. 新建功能分支
+git switch -c feature/login
+
+# 3. 写代码 → 提交
+git add .
+git commit -m "此处填写上传说明"
+
+# 4. 推到自己远程分支
+git push -u origin feature/login
+
+# 5. 在 GitHub 发 Pull Request → 请求你 Review
+# 6. 你通过后点 Merge；队友再删分支即可
