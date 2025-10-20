@@ -14,15 +14,15 @@ git config user.email "alice@example.com"
 git switch main
 git pull origin main
 
-# 2. 新建功能分支
-git switch -c feature/login
+# 2. 新建功能分支（feature/后面填写你自己的分支）
+git switch -c feature/你自己的分支
 
 # 3. 写代码 → 提交
 git add .
 git commit -m "此处填写上传说明"
 
 # 4. 推到自己远程分支
-git push -u origin feature/login
+git push -u origin feature/你自己的分支
 
 # 5. 在 GitHub 发 Pull Request → 请求你 Review
 # 6. 你通过后点 Merge；队友再删分支即可
