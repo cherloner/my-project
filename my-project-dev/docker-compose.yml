@@ -1,0 +1,168 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:14-alpine
+    container_name: short_video_postgres
+    environment:
+      POSTGRES_DB: short_video_platform
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password_2025
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d short_video_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # Redis 缓存
+  redis:
+    image: redis:6-alpine
+    container_name: short_video_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # MinIO 对象存储（S3兼容）
+  minio:
+    image: minio/minio:latest
+    container_name: short_video_minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"  # API端口
+      - "9001:9001"  # 控制台端口
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # pgAdmin（数据库管理工具，可选）
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: short_video_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - app_network
+    profiles:
+      - tools  # 使用 --profile tools 启动
+
+  # Redis Commander（Redis管理工具，可选）
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: short_video_redis_commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app_network
+    profiles:
+      - tools  # 使用 --profile tools 启动
+
+  # 后端 API 服务（FastAPI）
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: short_video_api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: short_video_platform
+      DB_USER: app_user
+      DB_PASSWORD: app_password_2025
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+      S3_BUCKET: videos
+      API_PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # 后端 Worker（Celery）
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: short_video_worker
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: short_video_platform
+      DB_USER: app_user
+      DB_PASSWORD: app_password_2025
+    depends_on:
+      - redis
+      - postgres
+      - minio
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  app_network:
+    driver: bridge
+
