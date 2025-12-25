@@ -14,6 +14,7 @@ const pipeline = promisify(stream.pipeline);
 
 // --- Persistent Mock Database (JSON) ---
 const DB_FILE = path.join(__dirname, '../db.json');
+const VIDEOS_DB_FILE = path.join(__dirname, '../videos.json');
 
 interface LearnRecord {
   video_id: string;
@@ -21,6 +22,23 @@ interface LearnRecord {
   cover_url: string;
   status: 'learned' | 'review_needed';
   last_watch_time: string;
+}
+
+interface VideoRecord {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  cover: string;
+  author: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+  likes: number;
+  comments: number;
+  shares: number;
+  created_at: string;
 }
 
 // Helper to read DB
@@ -35,6 +53,17 @@ const readDb = async (): Promise<LearnRecord[]> => {
   return [];
 };
 
+const readVideosDb = async (): Promise<VideoRecord[]> => {
+  try {
+    if (await fs.pathExists(VIDEOS_DB_FILE)) {
+      return await fs.readJson(VIDEOS_DB_FILE);
+    }
+  } catch (e) {
+    console.error("Failed to read Videos DB", e);
+  }
+  return [];
+};
+
 // Helper to write DB
 const writeDb = async (records: LearnRecord[]) => {
   try {
@@ -44,11 +73,22 @@ const writeDb = async (records: LearnRecord[]) => {
   }
 };
 
+const writeVideosDb = async (records: VideoRecord[]) => {
+  try {
+    await fs.writeJson(VIDEOS_DB_FILE, records, { spaces: 2 });
+  } catch (e) {
+    console.error("Failed to write Videos DB", e);
+  }
+};
+
 const app = express();
 const PORT = 8000;
 
 // Enable CORS
-app.use(cors());
+app.use(cors({
+  origin: '*', // Allow all origins for dev
+  allowedHeaders: ['Content-Type', 'Authorization', 'upload_id', 'chunk_index']
+}));
 
 // Parse JSON bodies (for init/complete)
 app.use(express.json());
@@ -61,6 +101,9 @@ const FINAL_DIR = path.join(UPLOAD_DIR, 'final');
 // Ensure directories exist
 fs.ensureDirSync(TEMP_DIR);
 fs.ensureDirSync(FINAL_DIR);
+
+// Serve static video files
+app.use('/api/videos/file', express.static(FINAL_DIR));
 
 /**
  * Interface for Init Request
@@ -94,7 +137,8 @@ app.post('/api/upload/init', async (req: Request, res: Response) => {
       message: "success",
       data: {
         upload_id,
-        upload_url: `http://localhost:${PORT}/api/upload/chunk`,
+        // Return relative path so frontend uses its proxy (and baseURL '/api')
+        upload_url: `upload/chunk`, 
         chunk_size: 2 * 1024 * 1024 // 2MB recommendation
       }
     });
@@ -193,6 +237,27 @@ app.post('/api/upload/complete', async (req: Request, res: Response) => {
 
     // Cleanup temp chunks
     await fs.remove(uploadDir);
+
+    // Add to Videos DB
+    const videos = await readVideosDb();
+    const newVideo: VideoRecord = {
+      id: video_id,
+      title: `上传视频 ${new Date().toLocaleDateString()}`,
+      description: '这是一个用户上传的视频内容',
+      url: `/api/videos/file/${video_id}.mp4`, // Relative URL, proxied by frontend
+      cover: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80', // Placeholder cover
+      author: {
+        id: 'u_me',
+        name: '我',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80'
+      },
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      created_at: new Date().toISOString()
+    };
+    videos.unshift(newVideo); // Add to beginning
+    await writeVideosDb(videos);
 
     res.json({
       code: 200,
@@ -302,7 +367,15 @@ app.get('/api/learn/records', async (req, res) => {
   });
 });
 
-app.get('/api/feed/recommend', (req, res) => res.json({ code: 200, data: { items: [] } }));
+app.get('/api/feed/recommend', async (req, res) => {
+  const videos = await readVideosDb();
+  res.json({ 
+    code: 200, 
+    data: { 
+      items: videos 
+    } 
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);

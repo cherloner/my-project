@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { MOCK_VIDEOS } from '../services/mockData';
+import { MOCK_VIDEOS, type Video } from '../services/mockData';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { videoApi } from '../services/api';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [activeindex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
+
+  // Fetch uploaded videos and merge with mock videos
+  useEffect(() => {
+    const fetchVideos = async () => {
+      try {
+        const res = await videoApi.getRecommendFeed();
+        if (res.data.code === 200 && res.data.data.items) {
+          // Uploaded videos first, then mock videos
+          setVideos([...res.data.data.items, ...MOCK_VIDEOS]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch videos", error);
+      }
+    };
+    fetchVideos();
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -51,7 +69,7 @@ export const Home: React.FC = () => {
         className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         style={{ scrollBehavior: 'smooth' }}
       >
-        {MOCK_VIDEOS.map((video, index) => (
+        {videos.map((video, index) => (
           <div key={video.id} className="w-full h-full snap-start">
             <VideoPlayer video={video} isActive={index === activeindex} />
           </div>

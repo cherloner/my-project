@@ -302,7 +302,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
       {/* Comments Drawer */}
       {showComments && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in slide-in-from-bottom duration-200">
-          <div className="bg-white rounded-t-2xl h-[70%] flex flex-col w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-t-2xl h-[50%] flex flex-col w-full" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex justify-between items-center p-4 border-b">
               <div className="w-6" /> {/* Spacer */}
@@ -361,7 +361,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
       {/* Share Sheet */}
       {showShare && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in slide-in-from-bottom duration-200">
-          <div className="bg-white rounded-t-2xl p-4 pb-safe w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-t-2xl p-4 pb-safe w-full max-h-[40%]" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-sm">分享至</h3>
               <button onClick={() => setShowShare(false)} className="p-1 hover:bg-gray-100 rounded-full">
