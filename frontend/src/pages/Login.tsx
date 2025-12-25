@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Smartphone, Lock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { authApi } from '../services/api';
+// import { authApi } from '../services/api';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();

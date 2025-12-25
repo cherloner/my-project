@@ -6,6 +6,8 @@ import { Upload } from './pages/Upload';
 import { Inbox } from './pages/Inbox';
 import { Profile } from './pages/Profile';
 import { Login } from './pages/Login';
+import { VideoDetail } from './pages/VideoDetail';
+import { Search } from './pages/Search';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
@@ -15,6 +17,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/video/:id" element={<VideoDetail />} />
+          <Route path="/search" element={<Search />} />
           
           <Route element={<MainLayout />}>
             <Route path="/" element={<Home />} />

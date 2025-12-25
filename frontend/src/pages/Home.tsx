@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { MOCK_VIDEOS } from '../services/mockData';
 import { VideoPlayer } from '../components/VideoPlayer';
 
 export const Home: React.FC = () => {
+  const navigate = useNavigate();
   const [activeindex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -26,16 +29,35 @@ export const Home: React.FC = () => {
   }, [activeindex]);
 
   return (
-    <div 
-      ref={containerRef}
-      className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
-      style={{ scrollBehavior: 'smooth' }}
-    >
-      {MOCK_VIDEOS.map((video, index) => (
-        <div key={video.id} className="w-full h-full snap-start">
-          <VideoPlayer video={video} isActive={index === activeindex} />
-        </div>
-      ))}
+    <div className="relative h-full w-full bg-black">
+      {/* Search Overlay */}
+      <div className="absolute top-4 right-4 z-20 pt-2">
+        <button 
+          onClick={() => navigate('/search')}
+          className="bg-black/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-black/40 transition-colors"
+        >
+          <Search size={24} />
+        </button>
+      </div>
+
+      {/* Tabs Overlay (Optional, matching TikTok style) */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pt-2 flex gap-4 text-white font-bold text-lg drop-shadow-md">
+        <span className="opacity-60">关注</span>
+        <span className="border-b-2 border-white pb-1">推荐</span>
+      </div>
+
+      <div 
+        ref={containerRef}
+        className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+        style={{ scrollBehavior: 'smooth' }}
+      >
+        {MOCK_VIDEOS.map((video, index) => (
+          <div key={video.id} className="w-full h-full snap-start">
+            <VideoPlayer video={video} isActive={index === activeindex} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
+
