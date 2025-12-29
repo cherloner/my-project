@@ -441,6 +441,107 @@ app.get('/api/feed/recommend', async (req, res) => {
 });
 
 /**
+ * 9. Search Suggest & Search Videos
+ * Simple search over mock + uploaded videos
+ */
+const MOCK_SEARCH_VIDEOS: VideoRecord[] = [
+  {
+    id: '1',
+    title: '3分钟学习微积分',
+    description: '快速掌握微积分基础概念，数学其实很有趣！ #微积分 #数学 #学习',
+    url: '/videos/calculus.mp4',
+    cover: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&q=80',
+    author: { id: 'u1', name: '数学之美', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80' },
+    likes: 1240,
+    comments: 45,
+    shares: 88,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: '2',
+    title: '雅思3分钟学习',
+    description: '雅思口语高分技巧，每天3分钟，轻松开口说英语！ #雅思 #英语 #口语',
+    url: '/videos/ielts.mp4',
+    cover: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&q=80',
+    author: { id: 'u2', name: '英语达人', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&q=80' },
+    likes: 3500,
+    comments: 120,
+    shares: 500,
+    created_at: new Date().toISOString()
+  }
+];
+
+const getAllVideosForSearch = async (): Promise<VideoRecord[]> => {
+  const uploaded = await readVideosDb();
+  return [...MOCK_SEARCH_VIDEOS, ...uploaded];
+};
+
+app.get('/api/search/suggest', async (req, res) => {
+  const q = (req.query.q as string || '').trim();
+  if (!q) {
+    res.json([]);
+    return;
+  }
+  const base = [q, `${q} 教程`, `${q} 入门`, `${q} 提高`, `${q} 3分钟学`];
+  // Deduplicate and cap
+  const suggestions = Array.from(new Set(base)).slice(0, 8);
+  res.json(suggestions);
+});
+
+app.get('/api/search/videos', async (req, res) => {
+  const q = ((req.query.q as string) || '').trim().toLowerCase();
+  const tags = ((req.query.tags as string) || '').split(',').filter(Boolean);
+  const sort_by = (req.query.sort_by as string) || 'latest';
+  const duration_range = (req.query.duration_range as string) || '';
+
+  let items = await getAllVideosForSearch();
+
+  // Filter by q
+  if (q) {
+    items = items.filter(v => 
+      v.title.toLowerCase().includes(q) ||
+      v.description.toLowerCase().includes(q) ||
+      v.author.name.toLowerCase().includes(q)
+    );
+  }
+
+  // Filter by tags (simple keyword match)
+  if (tags.length > 0) {
+    items = items.filter(v => {
+      const text = `${v.title} ${v.description}`.toLowerCase();
+      return tags.some(t => text.includes(t.toLowerCase()));
+    });
+  }
+
+  // Duration filter: demo only, keep all
+  // Sort
+  if (sort_by === 'latest') {
+    items = items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  } else if (sort_by === 'hot') {
+    items = items.sort((a, b) => (b.likes + b.comments + b.shares) - (a.likes + a.comments + a.shares));
+  }
+
+  res.json(items);
+});
+
+app.get('/api/video/:id', async (req, res) => {
+  const id = req.params.id;
+  const all = await getAllVideosForSearch();
+  const found = all.find(v => v.id === id);
+  if (!found) {
+    res.status(404).json({ code: 404, message: 'Video not found' });
+    return;
+  }
+  res.json({
+    id: found.id,
+    title: found.title,
+    url: found.url,
+    cover: found.cover,
+    last_position: 0
+  });
+});
+
+/**
  * 6. User Profile
  * GET /api/user/me
  */
