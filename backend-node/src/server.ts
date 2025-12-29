@@ -15,6 +15,7 @@ const pipeline = promisify(stream.pipeline);
 // --- Persistent Mock Database (JSON) ---
 const DB_FILE = path.join(__dirname, '../db.json');
 const VIDEOS_DB_FILE = path.join(__dirname, '../videos.json');
+const USERS_DB_FILE = path.join(__dirname, '../users.json');
 
 interface LearnRecord {
   video_id: string;
@@ -22,6 +23,17 @@ interface LearnRecord {
   cover_url: string;
   status: 'learned' | 'review_needed';
   last_watch_time: string;
+}
+
+interface UserRecord {
+  id: string;
+  phone: string;
+  nickname: string;
+  avatar: string;
+  bio?: string;
+  gender?: 'male' | 'female' | 'other';
+  location?: string;
+  school?: string;
 }
 
 interface VideoRecord {
@@ -64,6 +76,27 @@ const readVideosDb = async (): Promise<VideoRecord[]> => {
   return [];
 };
 
+const readUsersDb = async (): Promise<UserRecord[]> => {
+  try {
+    if (await fs.pathExists(USERS_DB_FILE)) {
+      return await fs.readJson(USERS_DB_FILE);
+    }
+  } catch (e) {
+    console.error("Failed to read Users DB", e);
+  }
+  // Default mock user if empty
+  return [{
+    id: 'u1',
+    phone: '13800138000',
+    nickname: '测试用户',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
+    bio: '热爱编程，分享技术 | 全栈开发者',
+    gender: 'male',
+    location: '北京',
+    school: '清华大学'
+  }];
+};
+
 // Helper to write DB
 const writeDb = async (records: LearnRecord[]) => {
   try {
@@ -81,6 +114,36 @@ const writeVideosDb = async (records: VideoRecord[]) => {
   }
 };
 
+const writeUsersDb = async (records: UserRecord[]) => {
+  try {
+    await fs.writeJson(USERS_DB_FILE, records, { spaces: 2 });
+  } catch (e) {
+    console.error("Failed to write Users DB", e);
+  }
+};
+
+// Initialize DBs
+const initDB = async () => {
+  try {
+    if (!await fs.pathExists(USERS_DB_FILE)) {
+      await fs.writeJson(USERS_DB_FILE, [{
+        id: 'u1',
+        phone: '13800138000',
+        nickname: '测试用户',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
+        bio: '热爱编程，分享技术 | 全栈开发者',
+        gender: 'male',
+        location: '北京',
+        school: '清华大学'
+      }], { spaces: 2 });
+      console.log("Initialized users.json");
+    }
+  } catch (e) {
+    console.error("Failed to init DB", e);
+  }
+};
+initDB();
+
 const app = express();
 const PORT = 8000;
 
@@ -90,8 +153,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'upload_id', 'chunk_index']
 }));
 
-// Parse JSON bodies (for init/complete)
-app.use(express.json());
+// Parse JSON bodies (increase limit to allow base64 images)
+app.use(express.json({ limit: '30mb' }));
 
 // Path to store uploaded files
 const UPLOAD_DIR = path.join(__dirname, '../uploads');
@@ -377,6 +440,118 @@ app.get('/api/feed/recommend', async (req, res) => {
   });
 });
 
+/**
+ * 6. User Profile
+ * GET /api/user/me
+ */
+app.get('/api/user/me', async (req, res) => {
+  try {
+    // Mock auth: assume user is 'u1'
+    const userId = 'u1';
+    const users = await readUsersDb();
+    let user = users.find(u => u.id === userId);
+    
+    if (!user) {
+      // Create default if not exists
+      user = users[0];
+    }
+    
+    res.json({
+      code: 200,
+      data: user
+    });
+  } catch (error: any) {
+    res.status(500).json({ code: 500, message: error.message });
+  }
+});
+
+/**
+ * 7. Update User Profile
+ * POST /api/user/update
+ */
+app.post('/api/user/update', async (req, res) => {
+  try {
+    console.log("[User] Update request received:", req.body);
+    const { nickname, bio, gender, location, school, avatar } = req.body;
+    const userId = 'u1'; // Mock auth
+    
+    const users = await readUsersDb();
+    console.log("[User] Current users count:", users.length);
+    
+    const index = users.findIndex(u => u.id === userId);
+    
+    if (index === -1) {
+      console.error("[User] User not found:", userId);
+      res.status(404).json({ code: 404, message: "User not found" });
+      return;
+    }
+    
+    // Update fields
+    const updatedUser = {
+      ...users[index],
+      nickname: nickname || users[index].nickname,
+      bio: bio !== undefined ? bio : users[index].bio,
+      gender: gender || users[index].gender,
+      location: location !== undefined ? location : users[index].location,
+      school: school !== undefined ? school : users[index].school,
+      avatar: avatar || users[index].avatar
+    };
+    
+    users[index] = updatedUser;
+    await writeUsersDb(users);
+    console.log("[User] Updated successfully:", updatedUser.id);
+    
+    res.json({
+      code: 200,
+      message: "success",
+      data: updatedUser
+    });
+  } catch (error: any) {
+    console.error("[User] Update failed:", error);
+    res.status(500).json({ code: 500, message: error.message });
+  }
+});
+
+/**
+ * 8. Upload Image (Base64)
+ * POST /api/upload/image
+ */
+app.post('/api/upload/image', express.json({ limit: '10mb' }), async (req, res) => {
+  try {
+    const { image } = req.body; // Base64 string: "data:image/png;base64,..."
+    if (!image) {
+      res.status(400).json({ code: 400, message: "No image data" });
+      return;
+    }
+
+    // Parse Base64
+    const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      res.status(400).json({ code: 400, message: "Invalid base64 string" });
+      return;
+    }
+
+    const type = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    const extension = type.split('/')[1];
+    const fileName = `${uuidv4()}.${extension}`;
+    const filePath = path.join(FINAL_DIR, fileName);
+
+    await fs.writeFile(filePath, buffer);
+
+    res.json({
+      code: 200,
+      data: {
+        url: `/api/videos/file/${fileName}` // Reuse static file server
+      }
+    });
+  } catch (error: any) {
+    console.error("Upload image failed", error);
+    res.status(500).json({ code: 500, message: error.message });
+  }
+});
+
+// Start Server
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
   console.log(`Uploads stored in ${UPLOAD_DIR}`);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Share2, Bookmark, Grid, Lock, LogOut, PlayCircle as PlayCircleIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserProfileStats, type LearnRecord } from '../components/UserProfileStats';
+import { EditProfileModal } from '../components/EditProfileModal';
 import { MOCK_VIDEOS } from '../services/mockData';
 import { learnApi } from '../services/api';
 
@@ -9,6 +10,7 @@ export const Profile: React.FC = () => {
   const { user, logout } = useAuth();
   const [records, setRecords] = useState<LearnRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Fetch records from backend
   useEffect(() => {
@@ -47,7 +49,7 @@ export const Profile: React.FC = () => {
            <img src={user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80"} alt="Avatar" className="w-full h-full object-cover" />
         </div>
         <h2 className="text-xl font-bold mb-1">@{user?.nickname || '用户'}</h2>
-        <p className="text-sm text-gray-500 mb-4">热爱编程，分享技术 | 全栈开发者</p>
+        <p className="text-sm text-gray-500 mb-4">{user?.bio || '热爱编程，分享技术 | 全栈开发者'}</p>
 
         
         <div className="flex gap-8 mb-6">
@@ -66,10 +68,18 @@ export const Profile: React.FC = () => {
         </div>
 
         <div className="flex gap-2 w-full">
-          <button className="flex-1 bg-gray-100 py-2 rounded font-medium text-sm">编辑资料</button>
+          <button 
+            onClick={() => setIsEditOpen(true)}
+            className="flex-1 bg-gray-100 py-2 rounded font-medium text-sm active:bg-gray-200 transition-colors"
+          >
+            编辑资料
+          </button>
           <button className="flex-1 bg-gray-100 py-2 rounded font-medium text-sm">添加朋友</button>
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      {isEditOpen && <EditProfileModal onClose={() => setIsEditOpen(false)} />}
 
       {/* Learning Stats Component */}
       <UserProfileStats 

@@ -71,6 +71,10 @@ export const uploadApi = {
 export const splitApi = {
   createTask: (data: any) => api.post('/split/tasks', data),
   getTaskStatus: (taskId: string) => api.get(`/split/tasks/${taskId}`),
+  // User
+  getMe: () => api.get('/user/me'),
+  updateProfile: (data: any) => api.post('/user/update', data),
+  uploadImage: (base64: string) => api.post('/upload/image', { image: base64 }),
 };
 
 export const learnApi = {

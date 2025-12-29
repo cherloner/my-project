@@ -1,10 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
+import { authApi } from '../services/api';
+
 interface User {
   id: string;
   phone: string;
   nickname: string;
   avatar: string;
+  bio?: string;
+  gender?: string;
+  location?: string;
+  school?: string;
   roles?: string[];
 }
 
@@ -16,6 +22,7 @@ interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   checkAuth: () => Promise<void>;
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,21 +42,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (storedToken) {
       try {
         // 如果有 token，尝试获取用户信息
-        // 注意：这里假设后端有一个 /user/me 接口。如果暂时没有，可以先模拟成功
-        // const response = await authApi.getMe();
-        // setUser(response.data.data);
-        
-        // Mock user data for now if API fails or is not ready
-        setUser({
-          id: 'u1',
-          phone: '13800138000',
-          nickname: '测试用户',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80'
-        });
+        const response = await authApi.getMe();
+        if (response.data.code === 200) {
+          setUser(response.data.data);
+        } else {
+          throw new Error('Failed to get user info');
+        }
         setToken(storedToken);
       } catch (error) {
         console.error('Auth check failed', error);
-        logout();
+        // Fallback for demo stability if backend is not ready, keep logged in state but with mock user
+        // But since we just implemented backend, let's try to use it.
+        // If fail, maybe logout? Or keep previous behavior.
+        // Let's logout to be safe in real app, but for demo continuity:
+        // logout(); 
       }
     }
     setIsLoading(false);
@@ -66,6 +72,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(null);
     setUser(null);
   };
+  
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
 
   return (
     <AuthContext.Provider value={{ 
@@ -75,7 +85,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthenticated: !!user, 
       login, 
       logout,
-      checkAuth
+      checkAuth,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>
