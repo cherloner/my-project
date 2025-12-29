@@ -1,10 +1,23 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload as UploadIcon, CheckCircle, FileVideo, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { useResumableUpload } from '../hooks/useResumableUpload';
 
 export const VideoUploader: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { status, progress, currentChunk, totalChunks, error, startUpload, reset } = useResumableUpload();
+  const navigate = useNavigate();
+  const { status, progress, currentChunk, totalChunks, error, uploadedVideoId, startUpload, reset } = useResumableUpload();
+
+  // 上传完成后自动跳转到切分页面
+  useEffect(() => {
+    if (status === 'completed' && uploadedVideoId) {
+      // 延迟1秒后跳转，让用户看到成功提示
+      const timer = setTimeout(() => {
+        navigate('/split');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, uploadedVideoId, navigate]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -24,7 +37,7 @@ export const VideoUploader: React.FC = () => {
               <UploadIcon size={32} />
             </div>
             <p className="text-gray-600 font-bold mb-1">点击选择视频</p>
-            <p className="text-xs text-gray-400">支持断点续传 • 最大3分钟</p>
+            <p className="text-xs text-gray-400">支持断点续传</p>
             <input 
               ref={fileInputRef}
               type="file" 
@@ -86,13 +99,11 @@ export const VideoUploader: React.FC = () => {
               <CheckCircle size={32} />
             </div>
             <h3 className="font-bold text-lg mb-2">上传成功！</h3>
-            <p className="text-sm text-gray-500 mb-6">您的视频已进入审核队列</p>
-            <button 
-              onClick={reset}
-              className="px-6 py-2 bg-gray-100 text-gray-700 rounded-full font-medium hover:bg-gray-200"
-            >
-              继续上传
-            </button>
+            <p className="text-sm text-gray-500 mb-2">正在跳转到切分页面...</p>
+            <div className="flex items-center gap-2 text-blue-600">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-xs">即将开始智能切分</span>
+            </div>
           </div>
         );
 

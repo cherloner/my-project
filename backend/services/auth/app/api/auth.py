@@ -75,6 +75,9 @@ class UpdateProfileRequest(BaseModel):
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
+    gender: Optional[str] = None
+    location: Optional[str] = None
+    school: Optional[str] = None
     language: Optional[str] = None
 
 
@@ -200,6 +203,9 @@ async def get_profile(current_user: User = Depends(get_current_user)):
             "nickname": current_user.nickname,
             "avatar": current_user.avatar_url,
             "bio": current_user.bio,
+            "gender": current_user.gender,
+            "location": current_user.location,
+            "school": current_user.school,
             "language": current_user.language,
             "roles": current_user.roles,
             "created_at": current_user.created_at.isoformat()
@@ -221,6 +227,12 @@ async def update_profile(
         current_user.avatar_url = profile_data.avatar_url
     if profile_data.bio is not None:
         current_user.bio = profile_data.bio
+    if profile_data.gender is not None:
+        current_user.gender = profile_data.gender
+    if profile_data.location is not None:
+        current_user.location = profile_data.location
+    if profile_data.school is not None:
+        current_user.school = profile_data.school
     if profile_data.language is not None:
         current_user.language = profile_data.language
     
@@ -234,6 +246,9 @@ async def update_profile(
             "nickname": current_user.nickname,
             "avatar": current_user.avatar_url,
             "bio": current_user.bio,
+            "gender": current_user.gender,
+            "location": current_user.location,
+            "school": current_user.school,
             "language": current_user.language,
             "roles": current_user.roles,
             "created_at": current_user.created_at.isoformat()

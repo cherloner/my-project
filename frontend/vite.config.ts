@@ -15,9 +15,21 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000', // Update this to your backend Gateway URL
+        target: 'http://localhost', // Backend Gateway is on port 80
         changeOrigin: true,
         // rewrite: (path) => path.replace(/^\/api/, ''), // Keep /api if backend expects it
+      },
+      '/smart_split_output': {
+        target: 'http://localhost',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost',
+        changeOrigin: true,
+      },
+      '/videos': {
+        target: 'http://localhost',
+        changeOrigin: true,
       },
     },
   },

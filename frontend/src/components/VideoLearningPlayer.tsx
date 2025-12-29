@@ -14,18 +14,19 @@ interface VideoDetail {
 interface HeartbeatPayload {
   video_id: string;
   position: number;
-  buffered: number;
-  playing: boolean;
+  duration: number;
 }
 
 interface VideoLearningPlayerProps {
   videoId: string;
   onComplete?: (status: 'learned' | 'review_needed') => void;
+  autoResume?: boolean; // 是否自动跳转到上次播放位置，默认true
 }
 
 export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({ 
   videoId, 
-  onComplete 
+  onComplete,
+  autoResume = true // 默认自动恢复
 }) => {
   // --- Refs ---
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -41,10 +42,22 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showResumeModal, setShowResumeModal] = useState(false); // 新增：显示继续播放提示
 
   // Heartbeat Status State
   const [heartbeatStatus, setHeartbeatStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [lastHeartbeatTime, setLastHeartbeatTime] = useState<Date | null>(null);
+
+  // 将旧的简单ID映射到UUID格式
+  const normalizeId = (id: string): string => {
+    const idMap: Record<string, string> = {
+      '1': '00000000-0000-0000-0000-000000000001',
+      '2': '00000000-0000-0000-0000-000000000002'
+    };
+    return idMap[id] || id;
+  };
+
+  const normalizedVideoId = normalizeId(videoId);
 
   // --- 1. Initialization: Fetch Video & Last Position ---
   useEffect(() => {
@@ -53,22 +66,62 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
     const fetchVideo = async () => {
       try {
         setLoading(true);
-        // Note: In real app, response.data would match VideoDetail structure
-        const res = await videoApi.getVideoDetail(videoId);
         
-        if (mounted && res.data) {
-          // Adapt mock or real data
+        console.log('🎬 开始加载视频，videoId:', videoId, 'normalizedVideoId:', normalizedVideoId);
+        
+        // 优先尝试从后端获取视频详情（包含学习进度）
+        try {
+          console.log('📡 调用后端 API getVideoDetail...');
+          const res = await videoApi.getVideoDetail(normalizedVideoId);
+          console.log('📡 后端响应:', res);
+          console.log('📡 后端数据:', res.data?.data);
+          
+          // 后端响应格式是 { code, message, data: { video信息 } }
+          const videoInfo = res.data?.data || res.data;
+          
+          if (videoInfo && videoInfo.id && mounted) {
+            const data: VideoDetail = {
+              id: videoInfo.id,
+              title: videoInfo.title,
+              play_url: videoInfo.play_url || videoInfo.url,
+              cover_url: videoInfo.cover_url || videoInfo.cover,
+              last_position: videoInfo.last_position || 0
+            };
+            console.log('✅ 从后端加载视频成功，data:', data);
+            setVideoData(data);
+            setLoading(false);
+            return;
+          }
+          console.warn('⚠️ 后端响应无数据, mounted:', mounted, 'videoInfo:', videoInfo);
+        } catch (apiError) {
+          console.warn('⚠️ 后端 API 调用失败:', apiError);
+        }
+        
+        // 如果后端失败，使用 mock 数据作为后备
+        console.log('🔍 尝试使用 mock 数据...');
+        const { MOCK_VIDEOS } = await import('../services/mockData');
+        console.log('📚 可用的 mock 视频:', MOCK_VIDEOS.map(v => ({ id: v.id, title: v.title })));
+        const mockVideo = MOCK_VIDEOS.find(v => v.id === normalizedVideoId);
+        console.log('🎯 匹配结果:', mockVideo ? `找到 ${mockVideo.title}` : '未找到');
+        
+        if (mockVideo && mounted) {
           const data: VideoDetail = {
-            id: res.data.id,
-            title: res.data.title,
-            play_url: res.data.url || res.data.play_url, // Fallback
-            cover_url: res.data.cover || res.data.cover_url,
-            last_position: res.data.last_position || 0
+            id: mockVideo.id,
+            title: mockVideo.title,
+            play_url: mockVideo.url,
+            cover_url: mockVideo.cover,
+            last_position: 0  // Mock 数据总是从头开始
           };
           setVideoData(data);
+          console.log('✅ 使用 mock 数据成功，data:', data);
+          setLoading(false);
+          return;
         }
+        
+        // 如果连 mock 数据都没有，显示错误
+        console.error('❌ 无法加载视频数据，所有数据源都失败');
       } catch (error) {
-        console.error('Failed to load video', error);
+        console.error('❌ fetchVideo 异常:', error);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -76,8 +129,11 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
 
     fetchVideo();
 
-    return () => { mounted = false; };
-  }, [videoId]);
+    return () => { 
+      mounted = false;
+      console.log('🔄 VideoLearningPlayer unmounted, videoId:', videoId);
+    };
+  }, [videoId, normalizedVideoId]);
 
   // --- Auto-Seek on Load ---
   const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -85,39 +141,54 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
     setDuration(video.duration);
     
     if (videoData?.last_position && videoData.last_position > 0) {
-      video.currentTime = videoData.last_position;
-      setCurrentTime(videoData.last_position);
+      if (autoResume) {
+        // 自动跳转到上次位置
+        video.currentTime = videoData.last_position;
+        setCurrentTime(videoData.last_position);
+      } else {
+        // 显示是否继续播放的询问
+        setShowResumeModal(true);
+      }
     }
   };
 
   // --- 2. Heartbeat System ---
   const sendHeartbeat = async (playing: boolean, forcePosition?: number) => {
-    // Use ref or forcePosition to get latest value without state dependency
-    const pos = forcePosition ?? positionRef.current;
+    if (!videoRef.current) return;
     
-    // Calculate buffered
-    let buffered = 0;
-    if (videoRef.current && videoRef.current.buffered.length > 0) {
-      buffered = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
+    // Use ref or forcePosition to get latest value without state dependency
+    const pos = Math.floor(forcePosition ?? positionRef.current);
+    const dur = Math.floor(videoRef.current.duration || 0);
+
+    // 只有当 duration 有效时才发送心跳
+    if (!dur || dur <= 0 || isNaN(dur)) {
+      console.log('⏸️ Skipping heartbeat: invalid duration', dur);
+      return;
     }
 
     const payload: HeartbeatPayload = {
-      video_id: videoId,
+      video_id: normalizedVideoId,
       position: pos,
-      buffered: buffered,
-      playing: playing
+      duration: dur
     };
+
+    console.log('📤 Sending heartbeat payload:', JSON.stringify(payload), 'Types:', {
+      video_id: typeof payload.video_id,
+      position: typeof payload.position,
+      duration: typeof payload.duration
+    });
 
     try {
       setHeartbeatStatus('sending');
       await learnApi.sendHeartbeat(payload);
-      console.log('💓 Heartbeat sent:', payload);
+      console.log('💓 Heartbeat sent successfully');
       setHeartbeatStatus('success');
       setLastHeartbeatTime(new Date());
       // Reset status to idle after 2 seconds
       setTimeout(() => setHeartbeatStatus('idle'), 2000);
     } catch (error) {
       // Fail silently for heartbeat
+      console.error('❌ Heartbeat failed:', error);
       setHeartbeatStatus('error');
     }
   };
@@ -231,6 +302,15 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
     const mins = Math.floor(time / 60);
     const secs = Math.floor(time % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // 处理继续播放选择
+  const handleResumeChoice = (resume: boolean) => {
+    setShowResumeModal(false);
+    if (resume && videoRef.current && videoData?.last_position) {
+      videoRef.current.currentTime = videoData.last_position;
+      setCurrentTime(videoData.last_position);
+    }
   };
 
   if (loading) {
@@ -356,6 +436,35 @@ export const VideoLearningPlayer: React.FC<VideoLearningPlayerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Resume Modal */}
+      {showResumeModal && videoData?.last_position && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in zoom-in duration-300">
+          <div className="bg-white rounded-2xl p-6 w-[80%] max-w-sm shadow-2xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">继续上次播放</h3>
+            
+            <p className="text-gray-600 text-sm mb-6">
+              检测到您上次播放到 {formatTime(videoData.last_position)}，是否要继续播放？
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => handleResumeChoice(true)}
+                className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold transition-colors"
+              >
+                继续播放
+              </button>
+              
+              <button
+                onClick={() => handleResumeChoice(false)}
+                className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-bold transition-colors"
+              >
+                从头开始
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Completion Modal */}
       {showCompleteModal && (

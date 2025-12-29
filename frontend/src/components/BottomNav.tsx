@@ -10,7 +10,7 @@ export const BottomNav: React.FC = () => {
   const navItems = [
     { to: '/', icon: Home, label: '首页' },
     { to: '/courses', icon: BookOpen, label: '课程' },
-    { to: '/upload', icon: PlusSquare, label: '创作', isAction: true }, // Special styling for upload
+    { to: '/upload', icon: PlusSquare, label: '创作', isAction: true },
     { to: '/inbox', icon: Bell, label: '消息' },
     { to: '/profile', icon: User, label: '我' },
   ];
@@ -29,7 +29,7 @@ export const BottomNav: React.FC = () => {
             isActive && !isHome ? "text-black" : "",
             isActive && isHome ? "text-white font-bold" : "",
             !isActive && isHome ? "text-white/70" : "",
-            item.isAction ? "transform -translate-y-2" : "" // Lift up the create button slightly
+            item.isAction ? "transform -translate-y-2" : ""
           )}
         >
           {({ isActive }) => (

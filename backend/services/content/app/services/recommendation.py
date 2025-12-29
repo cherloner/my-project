@@ -33,13 +33,13 @@ class RecommendationEngine:
     def get_base_videos(self) -> List[Video]:
         """获取基础视频集合"""
         return self.db.query(Video).filter(
-            Video.status == "online",
+            Video.status.in_(["online", "published"]),
             Video.video_type == "short"
         ).all()
     
     def filter_videos(self, videos: List[Video], exclude_seen: bool = True) -> List[Video]:
         """过滤视频"""
-        if not exclude_seen:
+        if not exclude_seen or not self.user_id:
             return videos
         
         # 排除用户已经看过的视频
@@ -298,7 +298,7 @@ class CollaborativeFilteringRecommender(RecommendationEngine):
         
         videos = self.db.query(Video).filter(
             Video.id.in_(list(recommended_video_ids)),
-            Video.status == "online",
+            Video.status.in_(["online", "published"]),
             Video.video_type == "short"
         ).all()
         
@@ -425,7 +425,7 @@ class PopularityRecommender(RecommendationEngine):
          .outerjoin(Comment, Video.id == Comment.video_id)\
          .outerjoin(Favorite, Video.id == Favorite.video_id)\
          .filter(
-            Video.status == "online",
+            Video.status.in_(["online", "published"]),
             Video.video_type == "short",
             *time_filters
         ).group_by(Video.id).order_by(desc('popularity_score'))
@@ -481,7 +481,7 @@ class RecommendationService:
             # 从缓存中获取视频ID列表，查询视频对象
             videos = self.db.query(Video).filter(
                 Video.id.in_(cached_video_ids[:limit]),
-                Video.status == "online",
+                Video.status.in_(["online", "published"]),
                 Video.video_type == "short"
             ).all()
             

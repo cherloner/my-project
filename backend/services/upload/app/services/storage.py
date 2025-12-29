@@ -232,7 +232,7 @@ def get_storage_service() -> StorageServiceInterface:
         )
     else:
         # 默认使用本地存储
-        base_dir = os.getenv("UPLOAD_BASE_DIR", "uploads")
+        base_dir = os.getenv("UPLOAD_BASE_DIR", "/app/data/uploads")
         return LocalStorageService(base_dir=base_dir)
 
 

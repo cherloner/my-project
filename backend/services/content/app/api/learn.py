@@ -14,7 +14,7 @@ sys.path.append(project_root)
 
 from common.database.connection import get_db
 from common.models import User, Video, LearnRecord
-from common.utils.auth import get_current_user
+from common.utils.auth import get_current_user, get_optional_user
 from common.utils.response import success_response, error_response, not_found_response
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
@@ -34,10 +34,17 @@ class CompleteRequest(BaseModel):
 @router.post("/heartbeat", summary="学习心跳上报")
 async def heartbeat(
     request: HeartbeatRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),  # 开发环境：可选认证
     db: Session = Depends(get_db)
 ):
     """上报学习进度心跳"""
+    
+    # 如果没有用户登录，直接返回成功（开发环境）
+    if not current_user:
+        return success_response(
+            data={"message": "未登录，学习进度未记录"},
+            message="心跳接收成功"
+        )
     
     # 验证视频存在
     video = db.query(Video).filter(
@@ -96,10 +103,17 @@ async def heartbeat(
 @router.post("/complete", summary="完成学习")
 async def complete(
     request: CompleteRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),  # 开发环境：可选认证
     db: Session = Depends(get_db)
 ):
     """标记视频学习完成"""
+    
+    # 如果没有用户登录，直接返回成功（开发环境）
+    if not current_user:
+        return success_response(
+            data={"message": "未登录，学习完成未记录"},
+            message="学习完成记录接收成功"
+        )
     
     # 验证视频存在
     video = db.query(Video).filter(
@@ -145,3 +159,48 @@ async def complete(
         message="学习已完成"
     )
 
+
+@router.get("/records", summary="获取学习记录")
+async def get_records(
+    current_user: Optional[User] = Depends(get_optional_user),  # 开发环境：可选认证
+    db: Session = Depends(get_db)
+):
+    """获取用户的学习记录"""
+    
+    # 如果没有用户登录，返回空列表（开发环境）
+    if not current_user:
+        return success_response(
+            data={
+                "records": [],
+                "total": 0
+            },
+            message="未登录，无学习记录"
+        )
+    
+    # 获取用户的学习记录
+    records = db.query(LearnRecord).filter(
+        LearnRecord.user_id == current_user.id
+    ).order_by(LearnRecord.last_watch_time.desc()).all()
+    
+    # 获取视频信息
+    record_list = []
+    for record in records:
+        video = db.query(Video).filter(Video.id == record.video_id).first()
+        if video:
+            record_list.append({
+                "id": str(record.id),
+                "video_id": str(record.video_id),
+                "title": video.title,
+                "cover": video.cover_url,
+                "status": record.status,
+                "progress": float(record.completed_ratio) if record.completed_ratio else 0.0,
+                "last_watch_time": record.last_watch_time.isoformat() if record.last_watch_time else None
+            })
+    
+    return success_response(
+        data={
+            "records": record_list,
+            "total": len(record_list)
+        },
+        message="获取学习记录成功"
+    )

@@ -7,14 +7,14 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY as PG_ARRAY
 from .base import Base
 
-UUIDType = UUID(as_uuid=False)
+UUIDType = UUID(as_uuid=True)
 ARRAY = PG_ARRAY
 
 
 class Video(Base):
     __tablename__ = 'videos'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     author_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text)
@@ -45,7 +45,7 @@ class Video(Base):
 class LongVideo(Base):
     __tablename__ = 'long_videos'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     video_id = Column(UUIDType, ForeignKey('videos.id'), unique=True, nullable=False)
     original_duration = Column(Integer, nullable=False)
     original_file_url = Column(String(500), nullable=False)

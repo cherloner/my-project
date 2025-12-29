@@ -38,7 +38,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
       // Handle the play promise to avoid race conditions
       const playPromise = videoRef.current?.play();
       if (playPromise !== undefined) {
-        playPromise.catch((error) => {
+        playPromise.then(() => {
+          setIsPlaying(true);
+        }).catch((error) => {
           // Auto-play was prevented
           console.log("Auto-play prevented:", error);
           setIsPlaying(false);
@@ -46,6 +48,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
       }
     } else {
       videoRef.current?.pause();
+      setIsPlaying(false);
       if (videoRef.current) videoRef.current.currentTime = 0;
       setShowComments(false);
       setShowShare(false);
@@ -61,12 +64,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
     if (videoRef.current) {
       try {
         if (videoRef.current.paused) {
-          await videoRef.current.play();
+          const playPromise = videoRef.current.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+            setIsPlaying(true);
+          }
         } else {
           videoRef.current.pause();
+          setIsPlaying(false);
         }
       } catch (error) {
         console.error("Playback error:", error);
+        setIsPlaying(false);
       }
     }
   };
@@ -75,7 +84,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
     if (videoRef.current) {
       const curr = videoRef.current.currentTime;
       const dur = videoRef.current.duration;
-      const progress = (curr / dur) * 100;
+      const progress = dur > 0 ? (curr / dur) * 100 : 0;
       setProgress(progress);
 
       // Check Completion (>= 90%)
@@ -252,12 +261,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
             min="0" 
             max="100" 
             step="0.1"
-            value={progress}
+            value={isNaN(progress) ? 0 : progress}
             onChange={(e) => {
               const val = parseFloat(e.target.value);
-              setProgress(val);
-              if (videoRef.current) {
-                videoRef.current.currentTime = (val / 100) * videoRef.current.duration;
+              if (!isNaN(val)) {
+                setProgress(val);
+                if (videoRef.current) {
+                  videoRef.current.currentTime = (val / 100) * videoRef.current.duration;
+                }
               }
             }}
             onClick={(e) => e.stopPropagation()} // Prevent togglePlay

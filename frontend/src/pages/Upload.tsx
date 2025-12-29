@@ -49,11 +49,11 @@ export const Upload: React.FC = () => {
           </div>
         </section>
 
-        <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-600 leading-relaxed">
+          <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-600 leading-relaxed">
           <p className="font-bold mb-1">💡 提示：</p>
           <ul className="list-disc list-inside space-y-1">
             <li>支持断点续传，网络中断后重新选择同一文件即可继续。</li>
-            <li>视频时长限制为 3 分钟以内。</li>
+            <li>前端不再限制视频时长，超长视频可能导致上传或转码时间较长。</li>
             <li>上传完成后，系统将自动进行 AI 拆分处理。</li>
           </ul>
         </div>

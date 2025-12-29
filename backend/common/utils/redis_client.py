@@ -180,7 +180,9 @@ def get_recommendation_cache(user_id: str, algorithm: str) -> Optional[list]:
         if redis_client is None:
             return None
         
-        key = f"recommend:user:{user_id}:{algorithm}"
+        # 处理匿名用户
+        cache_user_id = user_id or "anonymous"
+        key = f"recommend:user:{cache_user_id}:{algorithm}"
         cached_data = redis_client.get(key)
         
         if cached_data:
@@ -199,7 +201,9 @@ def set_recommendation_cache(user_id: str, algorithm: str, video_ids: list, expi
         if redis_client is None:
             return False
         
-        key = f"recommend:user:{user_id}:{algorithm}"
+        # 处理匿名用户
+        cache_user_id = user_id or "anonymous"
+        key = f"recommend:user:{cache_user_id}:{algorithm}"
         import json
         redis_client.setex(key, expire_seconds, json.dumps(video_ids))
         return True
@@ -215,13 +219,16 @@ def invalidate_recommendation_cache(user_id: str, algorithm: Optional[str] = Non
         if redis_client is None:
             return False
         
+        # 处理匿名用户
+        cache_user_id = user_id or "anonymous"
+        
         if algorithm:
             # 清除特定算法的缓存
-            key = f"recommend:user:{user_id}:{algorithm}"
+            key = f"recommend:user:{cache_user_id}:{algorithm}"
             redis_client.delete(key)
         else:
             # 清除该用户的所有推荐缓存
-            pattern = f"recommend:user:{user_id}:*"
+            pattern = f"recommend:user:{cache_user_id}:*"
             keys = redis_client.keys(pattern)
             if keys:
                 redis_client.delete(*keys)

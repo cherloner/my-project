@@ -16,6 +16,43 @@ interface SearchResult extends Video {
   // Extend if needed, for now using Video type
 }
 
+// 后端搜索API返回的数据结构
+interface SearchApiResult {
+  video_id: string;
+  title: string;
+  description?: string;
+  cover_url: string;
+  play_url?: string;
+  duration: number;
+  author: {
+    id: string;
+    nickname: string;
+    avatar: string;
+  };
+  stats: {
+    play_count: number;
+    like_count: number;
+    comment_count: number;
+  };
+}
+
+// 将后端搜索结果映射为前端Video类型
+const mapSearchResultToVideo = (result: SearchApiResult): Video => ({
+  id: result.video_id,
+  title: result.title,
+  description: result.description || '',
+  url: result.play_url || '', // 播放URL可能需要在详情页获取
+  cover: result.cover_url,
+  author: {
+    id: result.author.id,
+    name: result.author.nickname,
+    avatar: result.author.avatar
+  },
+  likes: result.stats.like_count,
+  comments: result.stats.comment_count,
+  shares: 0 // 后端暂无分享数
+});
+
 export const Search: React.FC = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -66,11 +103,43 @@ export const Search: React.FC = () => {
         sort_by: filters.sort_by,
         tags: filters.tags.join(',')
       });
-      setResults(res.data || []);
+      
+      console.log('Search API response:', res.data);
+      
+      // 映射后端数据到前端Video类型
+      // 后端响应格式: { code, message, data: { items: [...] } }
+      const searchData = res.data?.data || res.data || {};
+      const apiResults = searchData.items || [];
+      console.log('API results:', apiResults);
+      
+      const mappedResults = Array.isArray(apiResults) 
+        ? apiResults.map(mapSearchResultToVideo).filter(item => item !== null)
+        : [];
+      
+      console.log('Mapped results:', mappedResults);
+      
+      // 如果后端没有数据，使用mock数据作为后备
+      if (mappedResults.length === 0) {
+        // 从 mock 数据中搜索
+        const { MOCK_VIDEOS } = await import('../services/mockData');
+        const mockResults = MOCK_VIDEOS.filter(video => 
+          video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          video.description.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        console.log('Using mock data fallback:', mockResults);
+        setResults(mockResults);
+      } else {
+        setResults(mappedResults);
+      }
     } catch (error) {
       console.error('Search failed', error);
-      // Fallback for demo if API fails
-      setResults([]); 
+      // 失败时使用mock数据
+      const { MOCK_VIDEOS } = await import('../services/mockData');
+      const mockResults = MOCK_VIDEOS.filter(video => 
+        video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        video.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setResults(mockResults);
     } finally {
       setLoading(false);
     }
@@ -234,7 +303,7 @@ export const Search: React.FC = () => {
               <div 
                 key={video.id} 
                 className="bg-white rounded-lg overflow-hidden shadow-sm active:scale-95 transition-transform"
-                onClick={() => navigate(`/video/${video.id}`)}
+                onClick={() => navigate(`/video/${video.id}?from=search`)}
               >
                 <div className="aspect-[3/4] relative bg-gray-200">
                   <img src={video.cover} alt={video.title} className="w-full h-full object-cover" />

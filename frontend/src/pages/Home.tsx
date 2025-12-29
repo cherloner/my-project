@@ -11,21 +11,8 @@ export const Home: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
 
-  // Fetch uploaded videos and merge with mock videos
-  useEffect(() => {
-    const fetchVideos = async () => {
-      try {
-        const res = await videoApi.getRecommendFeed();
-        if (res.data.code === 200 && res.data.data.items) {
-          // Uploaded videos first, then mock videos
-          setVideos([...res.data.data.items, ...MOCK_VIDEOS]);
-        }
-      } catch (error) {
-        console.error("Failed to fetch videos", error);
-      }
-    };
-    fetchVideos();
-  }, []);
+  // Only use original mock videos for now
+  // API integration disabled to avoid video loading errors
 
   useEffect(() => {
     const container = containerRef.current;

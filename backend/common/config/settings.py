@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     SMS_CODE_EXPIRE_SECONDS: int = Field(default=300, description="短信验证码过期时间（秒）")
     SMS_CODE_MAX_ATTEMPTS: int = Field(default=5, description="短信验证码最大尝试次数")
     
+    # GLM AI 配置
+    GLM_API_KEY: str = Field(default="d5e53768ef9f4453b6eed2a582966da8.67VhSQSbZeyFIWkV", description="GLM API密钥")
+    
     @validator("JWT_SECRET_KEY", always=True)
     def validate_jwt_secret_key(cls, v, values):
         """生产环境必须设置JWT密钥"""

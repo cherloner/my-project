@@ -16,7 +16,7 @@ export interface Video {
 
 export const MOCK_VIDEOS: Video[] = [
   {
-    id: '1',
+    id: '00000000-0000-0000-0000-000000000001',
     title: '3分钟学习微积分',
     description: '快速掌握微积分基础概念，数学其实很有趣！ #微积分 #数学 #学习',
     url: '/videos/calculus.mp4',
@@ -31,7 +31,7 @@ export const MOCK_VIDEOS: Video[] = [
     shares: 88,
   },
   {
-    id: '2',
+    id: '00000000-0000-0000-0000-000000000002',
     title: '雅思3分钟学习',
     description: '雅思口语高分技巧，每天3分钟，轻松开口说英语！ #雅思 #英语 #口语',
     url: '/videos/ielts.mp4',

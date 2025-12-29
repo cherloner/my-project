@@ -7,14 +7,14 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from .base import Base
 
-UUIDType = UUID(as_uuid=False)
+UUIDType = UUID(as_uuid=True)
 JSON = JSONB
 
 
 class SplitTask(Base):
     __tablename__ = 'split_tasks'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     task_id = Column(String(100), unique=True, nullable=False)
     long_video_id = Column(UUIDType, ForeignKey('long_videos.id'), nullable=False)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
@@ -42,7 +42,7 @@ class SplitTask(Base):
 class SplitSegment(Base):
     __tablename__ = 'split_segments'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     task_id = Column(UUIDType, ForeignKey('split_tasks.id'), nullable=False)
     segment_index = Column(Integer, nullable=False)
     start_time = Column(Integer, nullable=False)

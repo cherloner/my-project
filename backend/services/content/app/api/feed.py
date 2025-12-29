@@ -118,7 +118,86 @@ class SearchResponse(BaseModel):
 # 使用统一的get_current_user函数
 
 
-
+@router.get("/my_videos", summary="获取当前用户的视频列表")
+async def get_my_videos(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=50, description="每页数量"),
+    days: int = Query(None, ge=1, le=30, description="最近几天的视频（可选）"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户上传的所有视频"""
+    
+    if not current_user:
+        return error_response("需要登录", code=401)
+    
+    # 查询用户的视频
+    query = db.query(Video).filter(Video.author_id == current_user.id)
+    
+    # 如果指定了天数，只查询最近N天的视频
+    if days:
+        from datetime import datetime, timedelta
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(Video.created_at >= cutoff_date)
+    
+    # 按创建时间倒序排列（最新的在前面）
+    query = query.order_by(desc(Video.created_at))
+    
+    # 计算总数
+    total = query.count()
+    
+    # 分页
+    offset = (page - 1) * page_size
+    videos = query.offset(offset).limit(page_size).all()
+    
+    # 获取视频统计信息
+    video_ids = [str(video.id) for video in videos]
+    stats_map = get_video_stats_batch(db, video_ids)
+    
+    # 构建响应数据
+    feed_videos = []
+    for video in videos:
+        video_id_str = str(video.id)
+        stats = stats_map.get(video_id_str, {"like_count": 0, "comment_count": 0, "favorite_count": 0})
+        
+        # 获取long_video_id（如果是长视频）
+        long_video_id = None
+        if video.video_type == "long" and hasattr(video, 'long_video') and video.long_video:
+            # long_video 是一个列表，取第一个
+            long_video_id = str(video.long_video[0].id) if len(video.long_video) > 0 else None
+        
+        feed_videos.append({
+            "id": str(video.id),
+            "title": video.title,
+            "description": video.description,
+            "tags": video.tags,
+            "duration": video.duration,
+            "play_url": video.play_url,
+            "cover_url": video.cover_url,
+            "language": video.language,
+            "status": video.status,
+            "video_type": video.video_type,
+            "long_video_id": long_video_id,  # 添加long_video_id
+            "author_id": str(video.author_id),
+            "author_nickname": video.author.nickname,
+            "author_avatar": video.author.avatar_url,
+            "like_count": stats["like_count"],
+            "comment_count": stats["comment_count"],
+            "favorite_count": stats["favorite_count"],
+            "is_liked": False,  # 自己的视频
+            "is_favorited": False,  # 自己的视频
+            "created_at": video.created_at.isoformat()
+        })
+    
+    has_next = offset + len(videos) < total
+    
+    return success_response(data={
+        "videos": feed_videos,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_next": has_next
+    })
 
 
 @router.get("/recommend", summary="智能推荐视频流")
@@ -126,7 +205,7 @@ async def get_recommend_feed(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=50, description="每页数量"),
     strategy: str = Query("hybrid", regex="^(hybrid|content|collaborative|popularity)$", description="推荐策略"),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),  # 开发环境：可选认证
     db: Session = Depends(get_db)
 ):
     """获取智能推荐视频流"""
@@ -135,8 +214,9 @@ async def get_recommend_feed(
     recommendation_service = RecommendationService(db)
     
     # 获取推荐视频
+    user_id = str(current_user.id) if current_user else None
     recommended_videos = recommendation_service.get_recommendations(
-        user_id=str(current_user.id),
+        user_id=user_id,
         strategy=strategy,
         limit=page_size * 5  # 获取更多用于分页
     )
@@ -150,20 +230,23 @@ async def get_recommend_feed(
     
     # 获取用户互动信息
     video_ids = [str(video.id) for video in videos]
+    liked_video_ids = set()
+    favorited_video_ids = set()
     
-    # 获取点赞信息
-    user_likes = db.query(Like).filter(
-        Like.user_id == current_user.id,
-        Like.video_id.in_(video_ids)
-    ).all()
-    liked_video_ids = {str(like.video_id) for like in user_likes}
-    
-    # 获取收藏信息
-    user_favorites = db.query(Favorite).filter(
-        Favorite.user_id == current_user.id,
-        Favorite.video_id.in_(video_ids)
-    ).all()
-    favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
+    if current_user:
+        # 获取点赞信息
+        user_likes = db.query(Like).filter(
+            Like.user_id == current_user.id,
+            Like.video_id.in_(video_ids)
+        ).all()
+        liked_video_ids = {str(like.video_id) for like in user_likes}
+        
+        # 获取收藏信息
+        user_favorites = db.query(Favorite).filter(
+            Favorite.user_id == current_user.id,
+            Favorite.video_id.in_(video_ids)
+        ).all()
+        favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
     
     # 批量获取统计信息，避免N+1查询
     stats_map = get_video_stats_batch(db, video_ids)
@@ -594,17 +677,17 @@ async def get_hot_feed(
     favorited_video_ids = set()
     
     if current_user:
-    user_likes = db.query(Like).filter(
-        Like.user_id == current_user.id,
-        Like.video_id.in_(video_ids)
-    ).all()
-    liked_video_ids = {str(like.video_id) for like in user_likes}
-    
-    user_favorites = db.query(Favorite).filter(
-        Favorite.user_id == current_user.id,
-        Favorite.video_id.in_(video_ids)
-    ).all()
-    favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
+        user_likes = db.query(Like).filter(
+            Like.user_id == current_user.id,
+            Like.video_id.in_(video_ids)
+        ).all()
+        liked_video_ids = {str(like.video_id) for like in user_likes}
+        
+        user_favorites = db.query(Favorite).filter(
+            Favorite.user_id == current_user.id,
+            Favorite.video_id.in_(video_ids)
+        ).all()
+        favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
     
     # 批量获取统计信息
     stats_map = get_video_stats_batch(db, video_ids)
@@ -699,17 +782,17 @@ async def search_videos(
     favorited_video_ids = set()
     
     if current_user:
-    user_likes = db.query(Like).filter(
-        Like.user_id == current_user.id,
-        Like.video_id.in_(video_ids)
-    ).all()
-    liked_video_ids = {str(like.video_id) for like in user_likes}
-    
-    user_favorites = db.query(Favorite).filter(
-        Favorite.user_id == current_user.id,
-        Favorite.video_id.in_(video_ids)
-    ).all()
-    favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
+        user_likes = db.query(Like).filter(
+            Like.user_id == current_user.id,
+            Like.video_id.in_(video_ids)
+        ).all()
+        liked_video_ids = {str(like.video_id) for like in user_likes}
+        
+        user_favorites = db.query(Favorite).filter(
+            Favorite.user_id == current_user.id,
+            Favorite.video_id.in_(video_ids)
+        ).all()
+        favorited_video_ids = {str(favorite.video_id) for favorite in user_favorites}
     
     # 批量获取统计信息
     stats_map = get_video_stats_batch(db, video_ids)
@@ -777,32 +860,36 @@ async def get_video_detail(
     # 获取用户互动状态（如果已登录）
     is_liked = False
     is_favorited = False
+    last_position = 0  # 默认从头开始
     
     if current_user:
-    is_liked = db.query(Like).filter(
-        Like.user_id == current_user.id,
-        Like.video_id == video.id
-    ).first() is not None
-    
-    is_favorited = db.query(Favorite).filter(
-        Favorite.user_id == current_user.id,
-        Favorite.video_id == video.id
-    ).first() is not None
-    
-    # 创建学习记录（如果不存在）
-    learn_record = db.query(LearnRecord).filter(
-        LearnRecord.user_id == current_user.id,
-        LearnRecord.video_id == video.id
-    ).first()
-    
-    if not learn_record:
-        learn_record = LearnRecord(
-            user_id=current_user.id,
-            video_id=video.id,
-            status="not_started"
-        )
-        db.add(learn_record)
-        db.commit()
+        is_liked = db.query(Like).filter(
+            Like.user_id == current_user.id,
+            Like.video_id == video.id
+        ).first() is not None
+        
+        is_favorited = db.query(Favorite).filter(
+            Favorite.user_id == current_user.id,
+            Favorite.video_id == video.id
+        ).first() is not None
+        
+        # 获取学习记录
+        learn_record = db.query(LearnRecord).filter(
+            LearnRecord.user_id == current_user.id,
+            LearnRecord.video_id == video.id
+        ).first()
+        
+        if learn_record and learn_record.last_position:
+            last_position = learn_record.last_position
+        elif not learn_record:
+            # 创建学习记录（如果不存在）
+            learn_record = LearnRecord(
+                user_id=current_user.id,
+                video_id=video.id,
+                status="not_started"
+            )
+            db.add(learn_record)
+            db.commit()
     
     video_data = {
         "id": str(video.id),
@@ -823,6 +910,7 @@ async def get_video_detail(
         "favorite_count": favorite_count,
         "is_liked": is_liked,
         "is_favorited": is_favorited,
+        "last_position": last_position,  # 添加上次播放位置
         "created_at": video.created_at.isoformat()
     }
     

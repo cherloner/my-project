@@ -5,10 +5,12 @@ import uuid
 import os
 import tempfile
 import logging
+import base64
+from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -17,8 +19,8 @@ from pydantic import BaseModel
 from common.database.connection import get_db
 from common.models import User
 from common.models.upload import UploadTask
-from common.models.video import LongVideo
-from common.utils.auth import get_current_user
+from common.models.video import LongVideo, Video
+from common.utils.auth import get_current_user, get_optional_user
 from common.utils.response import success_response, error_response
 from ..services.storage import get_storage_service, calculate_file_hash
 
@@ -42,7 +44,7 @@ class UploadInitRequest(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     upload_id: str
-    title: str
+    title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[list] = None
     language: str = "zh-CN"
@@ -52,17 +54,21 @@ class UploadCompleteRequest(BaseModel):
 @router.post("/init", summary="初始化上传任务")
 async def init_upload(
     request: UploadInitRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),  # 开发环境：可选认证
     db: Session = Depends(get_db)
 ):
     """初始化上传任务"""
+    
+    # 如果没有用户登录，使用默认用户ID（开发环境）
+    user_id = current_user.id if current_user else "00000000-0000-0000-0000-000000000001"
+    
     # 生成上传ID
     upload_id = f"UP_{uuid.uuid4().hex[:8]}"
     
     # 创建上传任务记录
     upload_task = UploadTask(
         upload_id=upload_id,
-        user_id=current_user.id,
+        user_id=user_id,
         file_name=request.file_name,
         file_size=request.file_size,
         duration=request.duration,
@@ -78,8 +84,8 @@ async def init_upload(
     chunk_dir = CHUNK_TEMP_DIR / upload_id
     chunk_dir.mkdir(parents=True, exist_ok=True)
     
-    # 生成上传URL
-    upload_url = f"/api/upload/chunk"
+    # 生成上传URL（相对路径，前端会拼接baseURL）
+    upload_url = "upload/chunk"
     
     return success_response(
         data={
@@ -92,19 +98,32 @@ async def init_upload(
     )
 
 
-@router.post("/chunk", summary="分片上传")
+@router.put("/chunk", summary="分片上传")
 async def upload_chunk(
-    upload_id: str = Form(...),
-    chunk_index: int = Form(...),
-    chunk: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     """分片上传接口"""
+    # 从请求头获取参数
+    upload_id = request.headers.get('upload_id')
+    chunk_index_str = request.headers.get('chunk_index')
+    
+    if not upload_id or not chunk_index_str:
+        return error_response("缺少必要参数", code=400)
+    
+    try:
+        chunk_index = int(chunk_index_str)
+    except ValueError:
+        return error_response("chunk_index必须是整数", code=400)
+    
+    # 如果没有用户登录，使用默认用户ID（开发环境）
+    user_id = current_user.id if current_user else "00000000-0000-0000-0000-000000000001"
+    
     # 验证上传任务
     upload_task = db.query(UploadTask).filter(
         UploadTask.upload_id == upload_id,
-        UploadTask.user_id == current_user.id
+        UploadTask.user_id == user_id
     ).first()
     
     if not upload_task:
@@ -119,7 +138,7 @@ async def upload_chunk(
         db.commit()
     
     # 读取分片数据
-    chunk_data = await chunk.read()
+    chunk_data = await request.body()
     chunk_size = len(chunk_data)
     
     # 保存分片到临时目录
@@ -145,14 +164,17 @@ async def upload_chunk(
 @router.post("/complete", summary="完成上传并发起转码")
 async def complete_upload(
     request: UploadCompleteRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     """完成上传并发起转码"""
+    # 如果没有用户登录，使用默认用户ID（开发环境）
+    user_id = current_user.id if current_user else "00000000-0000-0000-0000-000000000001"
+    
     # 查找上传任务
     upload_task = db.query(UploadTask).filter(
         UploadTask.upload_id == request.upload_id,
-        UploadTask.user_id == current_user.id
+        UploadTask.user_id == user_id
     ).first()
     
     if not upload_task:
@@ -165,61 +187,61 @@ async def complete_upload(
     chunk_dir = CHUNK_TEMP_DIR / request.upload_id
     chunk_files = []
     if chunk_dir.exists():
-    # 获取所有分片文件并按索引排序
-    chunk_files = sorted(
-        chunk_dir.glob("chunk_*"),
-        key=lambda x: int(x.name.split("_")[1])
-    )
+        # 获取所有分片文件并按索引排序
+        chunk_files = sorted(
+            chunk_dir.glob("chunk_*"),
+            key=lambda x: int(x.name.split("_")[1])
+        )
     
     # 如果没有分片文件（测试环境），跳过合并步骤
     if not chunk_files:
         logger.info(f"No chunk files found for upload {request.upload_id}, using test mode")
         # 测试模式：使用模拟的文件URL
-        file_url = f"/test/videos/{current_user.id}/{request.upload_id}.mp4"
+        file_url = f"/test/videos/{user_id}/{request.upload_id}.mp4"
         upload_task.status = "uploaded"
         db.commit()
     else:
-    # 合并分片
-    merged_file_path = chunk_dir / "merged_file"
-    total_size = 0
-    
-    try:
-        with open(merged_file_path, 'wb') as merged_file:
-            for chunk_file in chunk_files:
-                with open(chunk_file, 'rb') as f:
-                    chunk_data = f.read()
-                    merged_file.write(chunk_data)
-                    total_size += len(chunk_data)
+        # 合并分片
+        merged_file_path = chunk_dir / "merged_file"
+        total_size = 0
         
-        # 验证文件大小
-        if total_size != upload_task.file_size:
-            logger.warning(f"文件大小不匹配: 期望 {upload_task.file_size}, 实际 {total_size}")
-        
-        # 读取合并后的文件
-        with open(merged_file_path, 'rb') as f:
-            merged_data = f.read()
-        
-        # 计算文件哈希（可选，用于完整性验证）
-        file_hash = calculate_file_hash(merged_data)
-        
-        # 上传到对象存储
-        storage_service = get_storage_service()
-        file_extension = Path(upload_task.file_name).suffix
-        object_key = f"videos/{current_user.id}/{request.upload_id}{file_extension}"
-        
-        file_url = storage_service.upload_file(
-            file_data=merged_data,
-            object_key=object_key,
-            content_type="video/mp4"
-        )
-        
-        # 清理临时文件
-        import shutil
-        shutil.rmtree(chunk_dir, ignore_errors=True)
-        
+        try:
+            with open(merged_file_path, 'wb') as merged_file:
+                for chunk_file in chunk_files:
+                    with open(chunk_file, 'rb') as f:
+                        chunk_data = f.read()
+                        merged_file.write(chunk_data)
+                        total_size += len(chunk_data)
+            
+            # 验证文件大小
+            if total_size != upload_task.file_size:
+                logger.warning(f"文件大小不匹配: 期望 {upload_task.file_size}, 实际 {total_size}")
+            
+            # 读取合并后的文件
+            with open(merged_file_path, 'rb') as f:
+                merged_data = f.read()
+            
+            # 计算文件哈希（可选，用于完整性验证）
+            file_hash = calculate_file_hash(merged_data)
+            
+            # 上传到对象存储
+            storage_service = get_storage_service()
+            file_extension = Path(upload_task.file_name).suffix
+            object_key = f"videos/{user_id}/{request.upload_id}{file_extension}"
+            
+            file_url = storage_service.upload_file(
+                file_data=merged_data,
+                object_key=object_key,
+                content_type="video/mp4"
+            )
+            
+            # 清理临时文件
+            import shutil
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+            
             # 更新上传任务状态
-        upload_task.status = "uploaded"
-        db.commit()
+            upload_task.status = "uploaded"
+            db.commit()
         except Exception as e:
             logger.error(f"合并分片失败: {e}", exc_info=True)
             return error_response(f"合并分片失败: {str(e)}", code=500)
@@ -227,10 +249,9 @@ async def complete_upload(
         # 如果是长视频，需要先创建 Video 记录，然后创建 LongVideo 记录
         if upload_task.video_type == "long":
             # 创建 Video 记录
-            from common.models.video import Video
             video = Video(
-                author_id=current_user.id,
-                title=request.title,
+                author_id=user_id,
+                title=request.title or f"视频_{upload_task.upload_id}",
                 description=request.description,
                 tags=request.tags,
                 duration=upload_task.duration,
@@ -265,8 +286,8 @@ async def complete_upload(
         else:
             # 短视频处理逻辑
             video = Video(
-                author_id=current_user.id,
-                title=request.title,
+                author_id=user_id,
+                title=request.title or f"视频_{upload_task.upload_id}",
                 description=request.description,
                 tags=request.tags,
                 duration=upload_task.duration,
@@ -288,3 +309,44 @@ async def complete_upload(
                 message="上传完成，转码中"
             )
 
+
+class ImageUploadRequest(BaseModel):
+    image: str  # Base64 编码的图片
+
+
+@router.post("/image", summary="上传图片")
+async def upload_image(
+    request: ImageUploadRequest,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """上传图片（头像等）"""
+    try:
+        # 如果没有用户登录，使用默认用户ID
+        user_id = current_user.id if current_user else "00000000-0000-0000-0000-000000000001"
+        
+        # 解码 Base64（处理 data:image/png;base64, 前缀）
+        if ',' in request.image:
+            image_data = base64.b64decode(request.image.split(",")[1])
+        else:
+            image_data = base64.b64decode(request.image)
+        
+        # 生成文件名
+        image_id = uuid.uuid4().hex[:8]
+        object_key = f"avatars/{user_id}/{image_id}.jpg"
+        
+        # 上传到存储服务
+        storage_service = get_storage_service()
+        image_url = storage_service.upload_file(
+            file_data=image_data,
+            object_key=object_key,
+            content_type="image/jpeg"
+        )
+        
+        return success_response(
+            data={"url": image_url},
+            message="图片上传成功"
+        )
+    except Exception as e:
+        logger.error(f"图片上传失败: {e}", exc_info=True)
+        return error_response(f"图片上传失败: {str(e)}", code=500)

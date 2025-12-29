@@ -10,6 +10,7 @@ interface UploadState {
   currentChunk: number;
   totalChunks: number;
   error: string | null;
+  uploadedVideoId: string | null;
 }
 
 interface UploadTask {
@@ -26,6 +27,7 @@ export const useResumableUpload = () => {
     currentChunk: 0,
     totalChunks: 0,
     error: null,
+    uploadedVideoId: null,
   });
 
   // Local storage key helper
@@ -69,9 +71,8 @@ export const useResumableUpload = () => {
         video.src = window.URL.createObjectURL(file);
       });
 
-      if (duration > 180) {
-        throw new Error('视频时长超过3分钟，请剪辑后上传');
-      }
+      // 不再在前端拦截或限制视频时长，允许上传任意时长的视频。
+      // 注意：后端或审核策略可能对时长有要求。
 
       // 2. Mock Compression/Processing
       // In web, we might just proceed. In React Native, use ffmpeg-kit here.
@@ -96,11 +97,15 @@ export const useResumableUpload = () => {
         };
         console.log('Resuming upload...', task);
       } else {
+        // Determine video type based on duration (short: ≤3min, long: >3min)
+        const videoType = duration <= 180 ? 'short' : 'long';
+        
         const initRes = await uploadApi.initUpload({
           file_name: file.name,
           file_size: file.size,
           duration: Math.ceil(duration),
-          mime_type: file.type
+          mime_type: file.type,
+          video_type: videoType
         });
         
         task = {
@@ -150,11 +155,12 @@ export const useResumableUpload = () => {
 
       // 5. Complete
       setState(prev => ({ ...prev, status: 'transcoding', progress: 100 }));
-      await uploadApi.completeUpload({ upload_id: task.uploadId });
+      const completeRes = await uploadApi.completeUpload({ upload_id: task.uploadId });
+      const videoId = completeRes.data?.data?.video_id || null;
       
       // Cleanup
       localStorage.removeItem(storageKey);
-      setState(prev => ({ ...prev, status: 'completed' }));
+      setState(prev => ({ ...prev, status: 'completed', uploadedVideoId: videoId }));
 
     } catch (err: any) {
       console.error(err);
@@ -173,6 +179,7 @@ export const useResumableUpload = () => {
       currentChunk: 0,
       totalChunks: 0,
       error: null,
+      uploadedVideoId: null,
     });
   };
 

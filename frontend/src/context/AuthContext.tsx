@@ -5,6 +5,10 @@ interface User {
   phone: string;
   nickname: string;
   avatar: string;
+  bio?: string;
+  gender?: string;
+  location?: string;
+  school?: string;
   roles?: string[];
 }
 
@@ -16,6 +20,7 @@ interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   checkAuth: () => Promise<void>;
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +37,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkAuth = async () => {
     const storedToken = localStorage.getItem('token');
-    if (storedToken) {
+    
+    // 开发环境：自动使用默认UUID token
+    const isDevelopment = import.meta.env.DEV;
+    const effectiveToken = storedToken || (isDevelopment ? '00000000-0000-0000-0000-000000000001' : null);
+    
+    if (effectiveToken) {
       try {
         // 如果有 token，尝试获取用户信息
         // 注意：这里假设后端有一个 /user/me 接口。如果暂时没有，可以先模拟成功
@@ -40,16 +50,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // setUser(response.data.data);
         
         // Mock user data for now if API fails or is not ready
-        setUser({
-          id: 'u1',
+        const mockUser = {
+          id: isDevelopment ? '00000000-0000-0000-0000-000000000001' : 'u1',
           phone: '13800138000',
           nickname: '测试用户',
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80'
-        });
-        setToken(storedToken);
+        };
+        
+        setUser(mockUser);
+        setToken(effectiveToken);
+        
+        // 在开发环境中，如果没有存储token，自动保存默认token
+        if (isDevelopment && !storedToken) {
+          localStorage.setItem('token', effectiveToken);
+        }
       } catch (error) {
         console.error('Auth check failed', error);
-        logout();
+        // 开发环境中即使出错也保持登录状态
+        if (!isDevelopment) {
+          logout();
+        }
       }
     }
     setIsLoading(false);
@@ -67,6 +87,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
   };
 
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -75,7 +99,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthenticated: !!user, 
       login, 
       logout,
-      checkAuth
+      checkAuth,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>

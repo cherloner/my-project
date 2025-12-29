@@ -45,6 +45,18 @@ env/
 # Logs
 *.log
 logs/
+*_logs*.txt
+worker_logs*.txt
+
+# Data directory (uploaded files, processed media)
+data/
+!data/.gitkeep
+
+# Legacy upload directory
+services/upload/uploads/
+
+# Temporary test files
+tmp_*.py
 
 # OS
 .DS_Store

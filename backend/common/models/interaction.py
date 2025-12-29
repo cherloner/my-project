@@ -7,13 +7,13 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from .base import Base
 
-UUIDType = UUID(as_uuid=False)
+UUIDType = UUID(as_uuid=True)
 
 
 class Comment(Base):
     __tablename__ = 'comments'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     video_id = Column(UUIDType, ForeignKey('videos.id'), nullable=False)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     parent_id = Column(UUIDType, ForeignKey('comments.id'))
@@ -34,7 +34,7 @@ class Comment(Base):
 class Like(Base):
     __tablename__ = 'likes'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     video_id = Column(UUIDType, ForeignKey('videos.id'), nullable=False)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -50,7 +50,7 @@ class Like(Base):
 class Favorite(Base):
     __tablename__ = 'favorites'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     video_id = Column(UUIDType, ForeignKey('videos.id'), nullable=False)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -67,7 +67,7 @@ class Follow(Base):
     """关注关系表"""
     __tablename__ = 'follows'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     follower_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     following_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

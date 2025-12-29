@@ -7,14 +7,14 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY as PG_ARRAY
 from .base import Base
 
-UUIDType = UUID(as_uuid=False)
+UUIDType = UUID(as_uuid=True)
 ARRAY = PG_ARRAY
 
 
 class UploadTask(Base):
     __tablename__ = 'upload_tasks'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     upload_id = Column(String(100), unique=True, nullable=False)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     file_name = Column(String(500), nullable=False)

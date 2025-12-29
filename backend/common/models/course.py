@@ -7,14 +7,14 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY as PG_ARRAY
 from .base import Base
 
-UUIDType = UUID(as_uuid=False)
+UUIDType = UUID(as_uuid=True)
 ARRAY = PG_ARRAY
 
 
 class Course(Base):
     __tablename__ = 'courses'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     course_id = Column(String(100), unique=True, nullable=False, default=lambda: f"course_{uuid.uuid4().hex[:12]}")
     author_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     title = Column(String(200), nullable=False)
@@ -40,7 +40,7 @@ class Course(Base):
 class CourseVideo(Base):
     __tablename__ = 'course_videos'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     course_id = Column(UUIDType, ForeignKey('courses.id'), nullable=False)
     video_id = Column(UUIDType, ForeignKey('videos.id'), nullable=False)
     segment_index = Column(Integer, nullable=False)
@@ -57,7 +57,7 @@ class CourseVideo(Base):
 class LearnRecord(Base):
     __tablename__ = 'learn_records'
     
-    id = Column(UUIDType, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     user_id = Column(UUIDType, ForeignKey('users.id'), nullable=False)
     video_id = Column(UUIDType, ForeignKey('videos.id'), nullable=False)
     last_position = Column(Integer, default=0)

@@ -4,6 +4,7 @@
 """
 import os
 import logging
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -319,6 +320,16 @@ def get_video_split_service() -> VideoSplitServiceInterface:
         # 使用实际服务
         output_dir = os.getenv("VIDEO_SPLIT_OUTPUT_DIR", "output_splited_videos")
         return RealVideoSplitService(output_dir=output_dir)
+    elif service_type == "smart":
+        # 使用智能拆分服务
+        try:
+            from .smart_split_service import SmartSplitService
+            output_dir = os.getenv("VIDEO_SPLIT_OUTPUT_DIR", "smart_split_output")
+            return SmartSplitService(output_dir=output_dir)
+        except Exception as e:
+            logger.warning(f"智能拆分服务加载失败，回退到模拟服务: {e}")
+            segment_duration = int(os.getenv("VIDEO_SPLIT_SEGMENT_DURATION", "60"))
+            return MockVideoSplitService(default_segment_duration=segment_duration)
     else:
         # 默认使用模拟服务
         segment_duration = int(os.getenv("VIDEO_SPLIT_SEGMENT_DURATION", "60"))

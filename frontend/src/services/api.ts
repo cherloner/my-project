@@ -12,7 +12,14 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    let token = localStorage.getItem('token');
+    
+    // 开发环境：如果没有token，使用默认UUID
+    if (!token && import.meta.env.DEV) {
+      token = '00000000-0000-0000-0000-000000000001';
+      localStorage.setItem('token', token);
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -27,8 +34,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      // Handle unauthorized (e.g., redirect to login)
+    // 只在生产环境且未登录时重定向到登录页
+    if (error.response && error.response.status === 401 && !import.meta.env.DEV) {
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -47,11 +54,11 @@ export const authApi = {
 
 export const videoApi = {
   getRecommendFeed: (page = 1) => api.get('/feed/recommend', { params: { page } }),
-  getVideoDetail: (id: string) => api.get(`/video/${id}`),
+  getVideoDetail: (id: string) => api.get(`/feed/video/${id}`),
 };
 
 export const uploadApi = {
-  initUpload: (data: { file_name: string; file_size: number; duration: number; mime_type: string }) => 
+  initUpload: (data: { file_name: string; file_size: number; duration: number; mime_type: string; video_type: string }) => 
     api.post('/upload/init', data),
   
   uploadChunk: (url: string, uploadId: string, chunkIndex: number, chunk: Blob) => {
@@ -69,8 +76,27 @@ export const uploadApi = {
 };
 
 export const splitApi = {
-  createTask: (data: any) => api.post('/split/tasks', data),
+  // 仅分析视频（GLM智能分析，耗时可能较长）
+  analyze: (long_video_id: string) => 
+    api.post('/split/analyze', { long_video_id }, { timeout: 600000 }), // 10分钟超时
+  // 直接切分视频（基于已有分析结果，不重复分析）
+  directSplit: (data: any) => api.post('/split/direct-split', data, { timeout: 300000 }), // 5分钟超时
+  createTask: (data: any) => api.post('/split/tasks', data, { timeout: 60000 }), // 60秒超时
   getTaskStatus: (taskId: string) => api.get(`/split/tasks/${taskId}`),
+  // 获取完整切分结果
+  getTaskResult: (taskId: string) => api.get(`/split/tasks/${taskId}/result`),
+  // 发布选中的片段到主页
+  publishSegments: (data: { segment_ids: string[] }) => api.post('/split/publish-segments', data),
+  // User profile APIs
+  updateProfile: (data: any) => api.put('/auth/profile', data),
+  uploadImage: (base64: string) => api.post('/upload/image', { image: base64 }),
+};
+
+export const contentApi = {
+  getVideos: (params: { page: number; page_size: number }) => 
+    api.get('/feed/recommend', { params }),
+  getMyVideos: (params: { page: number; page_size: number; days?: number }) => 
+    api.get('/feed/my_videos', { params }),
 };
 
 export const learnApi = {
