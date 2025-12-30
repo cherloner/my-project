@@ -181,11 +181,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, isActive }) => 
         className="w-full h-full object-cover"
         loop
         playsInline
+        preload="auto"
         onClick={togglePlay}
         onTimeUpdate={handleTimeUpdate}
         poster={video.cover}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
+        onLoadStart={() => console.log('视频开始加载:', video.title)}
+        onLoadedData={() => console.log('视频数据加载完成:', video.title)}
+        onCanPlay={() => console.log('视频可以播放:', video.title)}
+        onError={(e) => console.error('视频加载错误:', video.title, e)}
       />
 
       {/* Play/Pause Overlay Icon */}

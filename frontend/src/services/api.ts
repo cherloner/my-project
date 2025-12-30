@@ -53,7 +53,7 @@ export const authApi = {
 };
 
 export const videoApi = {
-  getRecommendFeed: (page = 1) => api.get('/feed/recommend', { params: { page } }),
+  getRecommendFeed: (page = 1) => api.get('/feed/recommend', { params: { page, strategy: 'popularity' } }),
   getVideoDetail: (id: string) => api.get(`/feed/video/${id}`),
 };
 

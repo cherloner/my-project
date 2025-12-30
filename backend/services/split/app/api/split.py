@@ -1,20 +1,22 @@
 import uuid
 import os
 import logging
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import insert
 from pydantic import BaseModel
 
 from common.database.connection import get_db
 from common.models import User, SplitTask, SplitSegment, Video, LongVideo
-# from ..worker import celery_app  # 暂时注释掉，使用同步处理
-from common.utils.auth import verify_token
+from common.utils.auth import get_current_user
 from common.utils.response import success_response, error_response, not_found_response
+from common.utils.redis_client import invalidate_recommendation_cache, get_redis
+from ..celery_app import celery_app
+from ..services.video_split_service import get_video_split_service
 
 logger = logging.getLogger(__name__)
 
@@ -158,10 +160,6 @@ class PublishSegmentsRequest(BaseModel):
     segment_ids: List[str]
 
 
-from common.utils.auth import get_current_user
-from ..celery_app import celery_app
-
-
 @router.post("/analyze", summary="仅分析视频（不切割）")
 async def analyze_video(
     request: AnalyzeRequest,
@@ -241,7 +239,6 @@ async def analyze_video(
     try:
         # 使用SmartSplitService进行分析
         from ..services.smart_split_service import SmartSplitService
-        from common.config.settings import settings
         
         service = SmartSplitService(
             output_dir="smart_split_output"
@@ -425,8 +422,8 @@ async def direct_split_video(
                 thumbnail_url=thumbnail_url,
                 confidence=None,
                 video_id=segment_video.id
-            ).returning(SplitSegment.__table__.c.id)
-            result = db.execute(stmt)
+            )
+            db.execute(stmt)
             db.commit()
         
         # 标记任务完成
@@ -750,7 +747,7 @@ async def confirm_split_result(
             conv_ids.append(sid)
 
     segments = db.query(SplitSegment).filter(
-        SplitSegment.task_id == tid,
+        SplitSegment.task_id == task.id,
         SplitSegment.id.in_(conv_ids)
     ).order_by(SplitSegment.segment_index).all()
     
@@ -788,7 +785,7 @@ async def confirm_split_result(
     
     # 返回确认后的结果
     segments = db.query(SplitSegment).filter(
-        SplitSegment.task_id == tid
+        SplitSegment.task_id == task.id
     ).order_by(SplitSegment.segment_index).all()
     
     return SplitResultResponse(
@@ -837,7 +834,7 @@ async def update_split_segments(
 
         segment = db.query(SplitSegment).filter(
             SplitSegment.id == seg_uuid,
-            SplitSegment.task_id == tid
+            SplitSegment.task_id == task.id
         ).first()
         
         if not segment:
@@ -869,7 +866,7 @@ async def update_split_segments(
     
     # 验证时间顺序（确保start_time < end_time，且片段之间不重叠）
     all_segments = db.query(SplitSegment).filter(
-        SplitSegment.task_id == tid
+        SplitSegment.task_id == task.id
     ).order_by(SplitSegment.segment_index).all()
     
     for i, seg in enumerate(all_segments):
@@ -884,7 +881,7 @@ async def update_split_segments(
     
     # 返回更新后的结果
     segments = db.query(SplitSegment).filter(
-        SplitSegment.task_id == tid
+        SplitSegment.task_id == task.id
     ).order_by(SplitSegment.segment_index).all()
     
     task_data = {
@@ -949,10 +946,6 @@ async def delete_split_task(
     db.commit()
     
     return success_response(data={"message": "任务删除成功"})
-
-
-# 导入视频拆分服务
-from ..services.video_split_service import get_video_split_service
 
 
 # 同步分割处理函数（使用服务抽象层）
@@ -1217,12 +1210,24 @@ async def publish_segments(
                     # ��parent_video_id��ΪNULL��ʹ����Ϊ������Ƶ��ʾ
                     video.parent_video_id = None
                     video.video_type = 'short'
-                    # ���״̬��pending������Ϊpublished
-                    if video.status == 'pending':
-                        video.status = 'published'
+                    # 无条件更新状态为published，确保视频可见
+                    video.status = 'published'
                     published_count += 1
         
         db.commit()
+        time.sleep(1)
+        # 清除所有用户的推荐缓存，确保新视频立即可见
+        try:
+            redis_client = get_redis()
+            if redis_client:
+                # 清除所有推荐缓存（包括匿名用户和所有已登录用户）
+                pattern = "recommend:user:*"
+                keys = redis_client.keys(pattern)
+                if keys:
+                    redis_client.delete(*keys)
+                    logger.info(f"已清除 {len(keys)} 个推荐缓存键")
+        except Exception as e:
+            logger.warning(f"清除推荐缓存失败: {e}")
         
         return success_response(
             data={

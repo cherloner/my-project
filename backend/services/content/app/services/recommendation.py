@@ -34,7 +34,8 @@ class RecommendationEngine:
         """获取基础视频集合"""
         return self.db.query(Video).filter(
             Video.status.in_(["online", "published"]),
-            Video.video_type == "short"
+            Video.video_type == "short",
+            Video.parent_video_id.is_(None)  # 只显示独立视频，不显示子片段
         ).all()
     
     def filter_videos(self, videos: List[Video], exclude_seen: bool = True) -> List[Video]:
@@ -416,6 +417,7 @@ class PopularityRecommender(RecommendationEngine):
         time_filters = self._get_time_filters(time_window)
         
         # 查询热门视频（综合点赞、评论、收藏）
+        # 热度相同时，优先显示最新发布的视频
         query = self.db.query(
             Video,
             (func.count(Like.id) + 
@@ -427,16 +429,17 @@ class PopularityRecommender(RecommendationEngine):
          .filter(
             Video.status.in_(["online", "published"]),
             Video.video_type == "short",
+            Video.parent_video_id.is_(None),
             *time_filters
-        ).group_by(Video.id).order_by(desc('popularity_score'))
+        ).group_by(Video.id).order_by(desc(Video.created_at), desc('popularity_score'))
         
         results = query.limit(limit * 2).all()
         videos = [result[0] for result in results]
         
-        # 过滤已看过的视频
-        filtered_videos = self.filter_videos(videos)
+        # 对于热度推荐，不过滤已看过的视频（让新视频有更多曝光机会）
+        # filtered_videos = self.filter_videos(videos)
         
-        return filtered_videos[:limit]
+        return videos[:limit]
     
     def _get_time_filters(self, time_window: str):
         """获取时间过滤条件"""

@@ -41,37 +41,75 @@ class VideoSplitter:
         
         # 生成输出文件名
         output_file = output_path / f"segment_{segment_index:03d}.mp4"
+        temp_file = output_path / f"segment_{segment_index:03d}_temp.mp4"
         
         # 计算时长
         duration = end_time - start_time
         
-        # 使用ffmpeg切分视频
-        # -ss: 开始时间  -t: 持续时间  -c copy: 直接复制流（速度快）
-        cmd = [
-            'ffmpeg',
-            '-i', video_path,
-            '-ss', str(start_time),
-            '-t', str(duration),
-            '-c', 'copy',  # 直接复制流，不重新编码
-            '-avoid_negative_ts', '1',  # 避免负时间戳
-            '-y',  # 覆盖已存在的文件
-            str(output_file)
-        ]
+        # 两阶段处理确保第一帧是关键帧
+        # 阶段1: 快速提取片段（使用copy模式）
+        logger.info(f"阶段1: 快速提取片段 segment_{segment_index} ({start_time}s - {end_time}s)")
         
-        logger.info(f"执行ffmpeg切分: segment_{segment_index} ({start_time}s - {end_time}s)")
+        cmd_extract = [
+            'ffmpeg',
+            '-ss', str(start_time),
+            '-i', video_path,
+            '-t', str(duration),
+            '-c', 'copy',
+            '-avoid_negative_ts', '1',
+            '-y',
+            str(temp_file)
+        ]
         
         try:
             result = subprocess.run(
-                cmd,
+                cmd_extract,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=300  # 5分钟超时
+                timeout=300
             )
             
             if result.returncode != 0:
-                logger.error(f"ffmpeg切分失败: {result.stderr}")
-                raise RuntimeError(f"视频切分失败: {result.stderr}")
+                logger.error(f"快速提取失败: {result.stderr}")
+                raise RuntimeError(f"视频提取失败: {result.stderr}")
+            
+            # 阶段2: 重新编码确保第一帧是关键帧
+            logger.info(f"阶段2: 重新编码确保关键帧 segment_{segment_index}")
+            
+            cmd_reencode = [
+                'ffmpeg',
+                '-i', str(temp_file),
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-g', '48',
+                '-force_key_frames', 'expr:eq(n,0)',  # 强制第一帧为关键帧
+                '-movflags', '+faststart',
+                '-pix_fmt', 'yuv420p',
+                '-y',
+                str(output_file)
+            ]
+            
+            result = subprocess.run(
+                cmd_reencode,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=300
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"重新编码失败: {result.stderr}")
+                # 清理临时文件
+                if temp_file.exists():
+                    temp_file.unlink()
+                raise RuntimeError(f"视频重新编码失败: {result.stderr}")
+            
+            # 删除临时文件
+            if temp_file.exists():
+                temp_file.unlink()
             
             logger.info(f"切分完成: {output_file}")
             
@@ -89,9 +127,15 @@ class VideoSplitter:
             
         except subprocess.TimeoutExpired:
             logger.error(f"ffmpeg切分超时: segment_{segment_index}")
+            # 清理临时文件
+            if temp_file.exists():
+                temp_file.unlink()
             raise RuntimeError(f"视频切分超时")
         except Exception as e:
             logger.error(f"ffmpeg切分异常: {e}")
+            # 清理临时文件
+            if temp_file.exists():
+                temp_file.unlink()
             raise
     
     def _generate_thumbnail(

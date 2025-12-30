@@ -9,10 +9,45 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [activeindex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Only use original mock videos for now
-  // API integration disabled to avoid video loading errors
+  // Load videos from API
+  useEffect(() => {
+    const loadVideos = async () => {
+      try {
+        const response = await videoApi.getRecommendFeed(1);
+        if (response.data?.data?.videos && response.data.data.videos.length > 0) {
+          const apiVideos = response.data.data.videos.map((v: any) => ({
+            id: v.id,
+            title: v.title,
+            description: v.description,
+            url: v.play_url,
+            cover: v.cover_url,
+            author: {
+              id: v.author_id,
+              name: v.author_nickname || '用户',
+              avatar: v.author_avatar || '/default-avatar.png'
+            },
+            likes: v.like_count || 0,
+            comments: v.comment_count || 0,
+            shares: 0
+          }));
+          setVideos(apiVideos);
+        } else {
+          // 如果API没有返回视频，使用Mock数据
+          setVideos(MOCK_VIDEOS);
+        }
+      } catch (error) {
+        console.error('加载视频失败:', error);
+        // 加载失败时降级到Mock数据
+        setVideos(MOCK_VIDEOS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadVideos();
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
