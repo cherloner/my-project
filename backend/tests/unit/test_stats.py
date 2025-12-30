@@ -178,3 +178,4 @@ class TestVideoStats:
         assert stats["video_id"] == "video-123"
         mock_get_play_count.assert_called_once_with("video-123")
 
+
